@@ -1,0 +1,260 @@
+version: '3.8'
+
+services:
+  # Laravel Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: marketplace-app
+    container_name: marketplace-app
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./:/var/www
+      - ./php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    networks:
+      - marketplace-network
+    depends_on:
+      - mysql-primary
+      - redis-master
+
+  # Nginx Web Server
+  nginx:
+    image: nginx:alpine
+    container_name: marketplace-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./:/var/www
+      - ./nginx/conf.d/:/etc/nginx/conf.d/
+    networks:
+      - marketplace-network
+    depends_on:
+      - app
+
+  # MySQL Primary (Write)
+  mysql-primary:
+    image: mysql:8.0
+    container_name: marketplace-mysql-primary
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-marketplace}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_USER: ${DB_USERNAME:-marketplace}
+    volumes:
+      - mysql-primary-data:/var/lib/mysql
+      - ./mysql/my.cnf:/etc/mysql/my.cnf
+    command: --default-authentication-plugin=mysql_native_password
+    ports:
+      - "3306:3306"
+    networks:
+      - marketplace-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 5s
+      retries: 10
+
+  # MySQL Read Replica 1
+  mysql-replica-1:
+    image: mysql:8.0
+    container_name: marketplace-mysql-replica-1
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_REPLICATION_MODE: slave
+      MYSQL_MASTER_HOST: mysql-primary
+    volumes:
+      - mysql-replica-1-data:/var/lib/mysql
+    ports:
+      - "3307:3306"
+    networks:
+      - marketplace-network
+    depends_on:
+      - mysql-primary
+
+  # MySQL Read Replica 2
+  mysql-replica-2:
+    image: mysql:8.0
+    container_name: marketplace-mysql-replica-2
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_REPLICATION_MODE: slave
+      MYSQL_MASTER_HOST: mysql-primary
+    volumes:
+      - mysql-replica-2-data:/var/lib/mysql
+    ports:
+      - "3308:3306"
+    networks:
+      - marketplace-network
+    depends_on:
+      - mysql-primary
+
+  # Redis Master
+  redis-master:
+    image: redis:7-alpine
+    container_name: marketplace-redis-master
+    restart: unless-stopped
+    command: redis-server --appendonly yes --replica-read-only no
+    volumes:
+      - redis-master-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - marketplace-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 5s
+      retries: 10
+
+  # Redis Replica 1
+  redis-replica-1:
+    image: redis:7-alpine
+    container_name: marketplace-redis-replica-1
+    restart: unless-stopped
+    command: redis-server --slaveof redis-master 6379 --replica-read-only yes
+    volumes:
+      - redis-replica-1-data:/data
+    ports:
+      - "6380:6379"
+    networks:
+      - marketplace-network
+    depends_on:
+      - redis-master
+
+  # Redis Replica 2
+  redis-replica-2:
+    image: redis:7-alpine
+    container_name: marketplace-redis-replica-2
+    restart: unless-stopped
+    command: redis-server --slaveof redis-master 6379 --replica-read-only yes
+    volumes:
+      - redis-replica-2-data:/data
+    ports:
+      - "6381:6379"
+    networks:
+      - marketplace-network
+    depends_on:
+      - redis-master
+
+  # Meilisearch (Self-Hosted Search Engine)
+  meilisearch:
+    image: getmeili/meilisearch:v1.5
+    container_name: marketplace-meilisearch
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILISEARCH_KEY:-masterKey123}
+      MEILI_ENV: ${MEILISEARCH_ENV:-production}
+    volumes:
+      - meilisearch-data:/meili_data
+    ports:
+      - "7700:7700"
+    networks:
+      - marketplace-network
+
+  # Laravel Reverb (WebSocket Server)
+  reverb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: marketplace-reverb
+    restart: unless-stopped
+    working_dir: /var/www
+    command: php artisan reverb:start
+    volumes:
+      - ./:/var/www
+    ports:
+      - "8080:8080"
+    networks:
+      - marketplace-network
+    depends_on:
+      - redis-master
+
+  # Laravel Horizon (Queue Worker)
+  horizon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: marketplace-horizon
+    restart: unless-stopped
+    working_dir: /var/www
+    command: php artisan horizon
+    volumes:
+      - ./:/var/www
+    networks:
+      - marketplace-network
+    depends_on:
+      - redis-master
+      - mysql-primary
+
+  # Mailpit (Email Testing)
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: marketplace-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - marketplace-network
+
+  # Prometheus (Metrics Collection)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: marketplace-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "9090:9090"
+    networks:
+      - marketplace-network
+
+  # Grafana (Monitoring Dashboard)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: marketplace-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - marketplace-network
+    depends_on:
+      - prometheus
+
+networks:
+  marketplace-network:
+    driver: bridge
+
+volumes:
+  mysql-primary-data:
+    driver: local
+  mysql-replica-1-data:
+    driver: local
+  mysql-replica-2-data:
+    driver: local
+  redis-master-data:
+    driver: local
+  redis-replica-1-data:
+    driver: local
+  redis-replica-2-data:
+    driver: local
+  meilisearch-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
