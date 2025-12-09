@@ -1,0 +1,5 @@
+const Ziggy = {"url":"http:\/\/localhost","port":null,"defaults":{},"routes":{"home":{"uri":"\/","methods":["GET","HEAD"]},"products.index":{"uri":"products","methods":["GET","HEAD"]},"products.show":{"uri":"products\/{slug}","methods":["GET","HEAD"],"parameters":["slug"]},"cart":{"uri":"cart","methods":["GET","HEAD"]},"checkout":{"uri":"checkout","methods":["GET","HEAD"]},"orders.index":{"uri":"orders","methods":["GET","HEAD"]},"orders.show":{"uri":"orders\/{orderNumber}","methods":["GET","HEAD"],"parameters":["orderNumber"]},"webhook.midtrans":{"uri":"webhook\/midtrans","methods":["POST"]},"payment.finish":{"uri":"payment\/finish","methods":["GET","HEAD"]},"login":{"uri":"login","methods":["GET","HEAD"]},"register":{"uri":"register","methods":["GET","HEAD"]},"logout":{"uri":"logout","methods":["POST"]},"storage.local":{"uri":"storage\/{path}","methods":["GET","HEAD"],"wheres":{"path":".*"},"parameters":["path"]}}};
+if (typeof window !== 'undefined' && typeof window.Ziggy !== 'undefined') {
+  Object.assign(Ziggy.routes, window.Ziggy.routes);
+}
+export { Ziggy };
