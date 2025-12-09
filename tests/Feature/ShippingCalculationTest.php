@@ -48,6 +48,22 @@ class ShippingCalculationTest extends TestCase
             destination: '444',
             weight: 1000,
             couriers: ['jne', 'tiki', 'pos']
+        );
+
+        $this->assertTrue($result['success']);
+        $this->assertArrayHasKey('options', $result);
+        $this->assertGreaterThan(0, count($result['options']));
+
+        // Options should be sorted by cost (cheapest first)
+        $costs = array_column($result['options'], 'cost');
+        $sortedCosts = $costs;
+        usort($sortedCosts, fn($a, $b) => $a <=> $b);
+        $this->assertEquals($sortedCosts, $costs);
+    }
+
+    /**
+     * Test shipping cost calculation for lightweight package
+     */
     public function test_calculate_shipping_for_small_package(): void
     {
         $rajaongkir = app(RajaOngkirService::class);
