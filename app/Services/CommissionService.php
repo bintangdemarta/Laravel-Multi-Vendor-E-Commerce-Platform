@@ -26,28 +26,6 @@ class CommissionService
             'commission_rate' => $rate,
             'commission_amount' => $commissionAmount,
             'vendor_earnings' => $vendorEarnings,
-        ];
-    }
-
-    /**
-     * Get applicable commission rate with priority logic
-     */
-    private function getApplicableRate(Vendor $vendor, Category $category): float
-    {
-        // 1. Check vendor-specific override
-        if ($vendor->commission_rate !== null) {
-            return $vendor->commission_rate;
-        }
-
-        // 2. Check category-specific override (with inheritance)
-        $categoryRate = $category->getCommissionRate();
-        if ($categoryRate !== config('marketplace.commission.default_rate')) {
-            return $categoryRate;
-        }
-
-        // 3. Use default from config
-        return config('marketplace.commission.default_rate');
-    }
 
     /**
      * Process commissions for all items in an order

@@ -39,21 +39,6 @@ class Category extends Model
 
     public function products(): HasMany
     {
-        return $this->hasMany(Product::class);
-    }
-
-    // Methods
-    public function getCommissionRate(): float
-    {
-        // Use category-specific rate if set, otherwise use parent's or default
-        if ($this->commission_rate !== null) {
-            return $this->commission_rate;
-        }
-
-        if ($this->parent) {
-            return $this->parent->getCommissionRate();
-        }
-
         return config('marketplace.commission.default_rate');
     }
 
